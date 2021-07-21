@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import math
 from pyvis.network import Network
+import plotly.express as px
 
 # model
 
@@ -53,6 +54,7 @@ def bipartite_graph(commits, min_contribs, max_contribs, min_total_contribs):
 						value=edge_width, title="{}".format(row["weight"]))
 	return graph
 
+@st.cache()
 def tally_contribs(commits):
 	contribs = {}
 	for i, row in commits.iterrows():
@@ -71,6 +73,21 @@ def tally_contribs(commits):
 @st.cache()
 def bug_types(commits):
 	return sorted(list(set(commits["target"])))
+
+def diversity_vs_frequency(commits):
+	diversity = []
+	frequency = []
+	contribs = tally_contribs(commits)
+	for i, row in contribs.iterrows():
+		frq = sum(contribs.loc[i, :])
+		div = 1 - sum([(bug_type_frq/frq)**2 for bug_type_frq in contribs.loc[i, :]])
+		diversity.append(div)
+		frequency.append(frq)
+	df = pd.DataFrame()
+	df.insert(0, "frequency", frequency)
+	df.insert(0, "diversity", diversity)
+	df.insert(0, "contributor", contribs.index)
+	return df
 
 # view
 
@@ -98,6 +115,42 @@ def show_tally_contribs():
 		commits = load_commits()
 		st.dataframe(tally_contribs(commits))
 
+def show_bug_type_distribution():
+	st.title("Bug type distribution")
+	with st.beta_expander("More", expanded=False):
+		commits = load_commits()
+		contribs = tally_contribs(commits)
+		st.markdown("Contributions by {}".format("jonnybradley"))
+		bug_type_bar_chart(contribs, "jonnybradley", [0, 4])
+		st.markdown("Contributions by {}".format("pom2ter"))
+		bug_type_bar_chart(contribs, "pom2ter", [0, 4])
+
+def show_diversity_vs_frequency():
+	st.title("Contribution diversity vs frequency")
+	with st.beta_expander("More", expanded=False):
+		commits = load_commits()
+		df = diversity_vs_frequency(commits)
+		fig = px.scatter(df, x="diversity", y="frequency", log_y=True, 
+			text="contributor", hover_name="contributor")
+		fig.update_xaxes(title_text='Diversity')
+		fig.update_yaxes(title_text='Frequency')
+		if not st.checkbox("Show names"):
+			fig.update_traces(mode="markers")
+		else:
+			fig.update_traces(textposition='top center')
+		st.plotly_chart(fig)
+
+# view helpers
+
+def bug_type_bar_chart(contribs, contributor, range):
+	df = contribs.loc[contributor, :]
+	fig = px.bar(df, log_y=True)
+	fig.update_yaxes(range=range)
+	fig.update_xaxes(title_text='Bug Type')
+	fig.update_yaxes(title_text='Count')
+	fig.update_layout(showlegend=False)
+	st.plotly_chart(fig)
+
 # controller
 
 st.sidebar.title("Bug triage")
@@ -105,5 +158,6 @@ st.sidebar.title("Bug triage")
 show_commits()
 show_tally_contribs()
 show_bipartite_graph()
-
+show_bug_type_distribution()
+show_diversity_vs_frequency()
 
